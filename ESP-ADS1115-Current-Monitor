@@ -1,0 +1,114 @@
+// https://www.instructables.com/ARDUINO-ENERGY-METER/      // 
+// https://ohmslawcalculator.com/voltage-divider-calculator //
+
+/// ESP32 PINOUT
+/// Voltage for ADC6 = GPIO34
+/// SCL - GPIO22
+/// SDA - GPIO21
+
+
+// ASD1115 PIN OUT to esp32
+/// VCC - 5v
+/// GND - GND
+/// SCL - GPIO22
+/// SDA - GPIO21
+/// ADDR - GND
+/// ALRT - NC
+/// A0 - SHUNT-Main-Ground
+/// A1 - SHUNT-2nd-Ground
+/// A2 - GND
+/// A3 - GND
+
+#include <ADS1X15.h>
+ADS1115 ADS(0x48); // ADDRESS FOR ADS1115
+const int numReadings = 19; //  20 x 50 = 1000 ms
+int delaysampletime = 50;   //  20 x 50 = 1000 ms
+int readings[numReadings];      // the readings from the analog input
+int readIndex = 0;              // the index of the current reading
+int total = 0;                  // the running total
+float average = 0;                // the average
+float offset = 0;// 1.33333;
+float multiplier =   0.0078125F; /* 0.015625f; // ADS1115  @ +/- 6.144V gain (16-bit results) 0.015625f; // */
+int16_t results;
+int i = 0;
+float totamps; // calculate total amps
+float avgamps; // average amps
+float amphr; // amp-hour
+float watt; // power=voltage*current
+float energy; // Watt - sec is again convert to Watt - Hr by dividing 1hr(3600sec)
+float total_energy; // total of in and out
+
+void setup()
+{
+  Serial.begin(115200);
+  ADS.begin();
+  ADS.setGain(16);
+  analogReadResolution(12);  //set the resolution to 12 bits (0-4096) for voltage input
+
+  for (int thisReading = 0; thisReading < numReadings; thisReading++) {
+    readings[thisReading] = 0;
+  }
+}
+
+
+void loop()
+{
+  average = total / numReadings; // calculate the average:
+  results = ADS.readADC_Differential_0_1(); // Read Differential A0 & A1 on ADS1115
+  total = total - readings[readIndex]; // read from the sensor:
+  readings[readIndex] = results; // add the reading to the total:
+  total = total + readings[readIndex]; // advance to the next position in the array:
+  readIndex = readIndex + 1; // if we're at the end of the array...
+
+  if (readIndex >= numReadings)
+  {
+    readIndex = 0;// ...wrap around to the beginning:
+
+    int analogValue = analogRead(2);
+    int analogVolts = analogReadMilliVolts(2);
+
+    // print out the values you read:
+    Serial.printf("ADC analog value = %d\n", analogValue);
+    Serial.printf("ADC millivolts value = %d\n", analogVolts);
+
+    
+    float voltage = 47.8; // battery voltage
+    // voltage = ((analogValue * 3.3) / 4095) * 15.0;
+    float mv = (average * multiplier);
+    float mvPerVolt = 1.33333333F; // (100 / 75)
+    float amp = (mv * mvPerVolt); //+offset;
+    float kwh = (voltage * amp);
+
+
+
+    long milisec = millis(); // calculate time in milliseconds
+    long time = milisec / 1000; // convert milliseconds to
+
+    totamps = totamps + amp; // calculate total amps
+    avgamps = totamps / time; // average amps
+    amphr = (avgamps * time) / 3600; // amp-hour
+    watt = voltage * amp; // power=voltage*current
+    energy = (watt * time) / (1000 * 3600);
+
+    total_energy += energy;
+    //total_energy -=energy;
+
+    Serial.print("VOLTAGE : ");    Serial.print(voltage);    Serial.println("Volt");
+    Serial.print("CURRENT :");    Serial.print(amp);    Serial.println("Amps");
+    Serial.print("POWER   :");    Serial.print(watt);    Serial.println("Watt");
+    Serial.print("WH ACC  :");    Serial.print(total_energy);    Serial.println("Watt-Hour");
+    Serial.print("WH NOW  :");    Serial.print(energy);    Serial.println("Watt-Hour");
+    Serial.print("AmpHours:");    Serial.print(amphr);    Serial.println("Ah");
+    Serial.println("");
+
+
+
+  }
+
+
+  //  average = total / numReadings; // calculate the average:
+  delay(delaysampletime);
+}
+
+
+// -- END OF FILE --
